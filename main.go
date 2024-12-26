@@ -1,29 +1,58 @@
 package main
 
 import (
-	"context"
+	"flag"
 	"fmt"
 	"io"
 	"log"
 	"os"
 	"os/signal"
+	"syscall"
 )
 
-func main() {
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
-	go func(ctx context.Context) {
-		<-ctx.Done()
-		stop()
-
-		fmt.Printf("gtee: sig %s\n", os.Interrupt)
-		os.Exit(1)
-	}(ctx)
-
-	run()
+type config struct {
+	ignore bool
+	append bool
 }
 
-func run() {
+func (c *config) parse() {
+	flag.BoolVar(&c.ignore, "i", c.ignore, "Ignore SIGINT")
+	flag.Parse()
+}
+
+func ignoreSIGINT() {
+	c := make(chan os.Signal, 2)
+	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+
+	go func() {
+		for {
+			switch s := <-c; s {
+			case os.Interrupt:
+				fmt.Println("\ngtee: SIGINT is suppressed.")
+			case syscall.SIGTERM:
+				close(c)
+				os.Exit(1)
+			}
+		}
+	}()
+}
+
+func gtee() {
 	if _, err := io.Copy(os.Stdout, os.Stdin); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func main() {
+	cfg := config{
+		ignore: false,
+		append: false,
+	}
+	cfg.parse()
+
+	if cfg.ignore {
+		ignoreSIGINT()
+	}
+
+	gtee()
 }
