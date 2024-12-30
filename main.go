@@ -1,13 +1,24 @@
 package main
 
 import (
+	"bufio"
+	"context"
 	"flag"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
+)
+
+var (
+	program                  = "gtee"
+	readBufSize              = bufio.MaxScanTokenSize
+	signalSIGINTIsIgnored    = fmt.Sprintf("%s: the SIGINT signal is ignored", program)
+	errCannotReadStdin       = fmt.Errorf("%s: cannot read stdin", program)
+	errCannotOpenFileToWrite = fmt.Errorf("%s: cannot open file to write", program)
+	errCannotWrite           = fmt.Errorf("%s: cannot write to file", program)
 )
 
 type config struct {
@@ -15,73 +26,145 @@ type config struct {
 	append bool
 }
 
-var (
-	name          = "gtee"
-	readBufSize   = bufio.MaxScanTokenSize
-	ignoredSIGINT = fmt.Sprintf("%s: %s", name, "The SIGINT signal is ignored.")
-)
-
 func (c *config) parse() {
 	flag.BoolVar(&c.ignore, "i", c.ignore, "Ignore the SIGINT signal.")
+	flag.BoolVar(&c.append, "a", c.append, "Append the output to the files rather than overwriting them.")
 	flag.Parse()
 }
 
-func main() {
-	cfg := config{
-		ignore: false,
-		append: false,
+func listenSIGINT(ignore bool) (context.Context, func()) {
+	ctx, cancel := context.WithCancel(context.Background())
+
+	sigc := make(chan os.Signal, 1)
+	signal.Notify(sigc, syscall.SIGINT)
+
+	stop := func() {
+		signal.Stop(sigc)
+		close(sigc)
 	}
-	cfg.parse()
 
-	if cfg.ignore {
-		ignoreSIGINT()
-	}
-
-	gtee(&cfg)
-}
-
-func ignoreSIGINT() {
-	c := make(chan os.Signal, 2)
-	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
-
-	go func() {
-		for {
-			switch s := <-c; s {
-			case os.Interrupt:
-				fmt.Println(ignoredSIGINT)
-			case syscall.SIGTERM:
-				close(c)
-				os.Exit(1)
+	go func(sigc chan os.Signal) {
+		for range sigc {
+			if ignore {
+				fmt.Println(signalSIGINTIsIgnored)
+				continue
 			}
+
+			cancel()
+			stop()
 		}
-	}()
+	}(sigc)
+
+	return ctx, stop
 }
 
-func gtee(cfg *config) {
-	fnames := flag.Args()
-	fnames = append(fnames, os.Stdout.Name())
-
-
+func gtee(ctx context.Context, append bool) (<-chan error, *sync.WaitGroup) {
 	var wg sync.WaitGroup
-	rc := make(chan []byte)
-	ec := make(chan error)
 
-	for range fnames {
-		wg.Add(1)
-		go func(rc <-chan []byte, wg *sync.WaitGroup) {
-			for b := range rc {
-				fmt.Printf("Got chunk: %d", len(b))
-			}
-			wg.Done()
-		}(rc, &wg)
+	fc := len(flag.Args()) + 1
+	bChans, errChan := readStdin(ctx, fc, &wg)
 
+	for i, fname := range flag.Args() {
+		f, err := openFile(fname, fileFlag(append))
+		if err != nil {
+			continue
+		}
+		writeFile(ctx, f, bChans[i], &wg)
+	}
+
+	writeFile(ctx, os.Stdout, bChans[len(bChans)-1], &wg)
+
+	return errChan, &wg
+}
+
+func readStdin(ctx context.Context, fc int, wg *sync.WaitGroup) ([]chan []byte, <-chan error) {
+	errChan := make(chan error, 1)
+	bChans := make([]chan []byte, fc)
+	for i := range bChans {
+		bChans[i] = make(chan []byte)
+	}
+
+	close := func() {
+		wg.Done()
+		for _, bChan := range bChans {
+			close(bChan)
+		}
+		close(errChan)
 	}
 
 	wg.Add(1)
-	go readStdin(rc, ec, &wg)
+	go func() {
+		defer close()
 
-	wg.Wait()
+		rbuf := make([]byte, readBufSize)
+		bbuf := make([]byte, readBufSize)
+		for {
+			n, err := os.Stdin.Read(rbuf)
+			if n == 0 && err == io.EOF {
+				return
+			}
 
+			if ctx.Err() != nil {
+				return
+			}
+
+			if err != nil {
+				errChan <- fmt.Errorf("%s: %s", errCannotReadStdin, err)
+				return
+			}
+
+			copy(bbuf, rbuf)
+			for _, bChan := range bChans {
+				bChan <- bbuf
+			}
+		}
+	}()
+
+	return bChans, errChan
+}
+
+func fileFlag(append bool) int {
+	if append {
+		return os.O_CREATE | os.O_APPEND | os.O_WRONLY
+	}
+
+	return os.O_CREATE | os.O_WRONLY
+}
+
+func openFile(fname string, flag int) (*os.File, error) {
+	file, err := os.OpenFile(fname, flag, 0644)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s: %s: %s", errCannotOpenFileToWrite, fname, err)
+		return nil, err
+	}
+
+	return file, err
+}
+
+func writeFile(ctx context.Context, f *os.File, bChan <-chan []byte, wg *sync.WaitGroup) {
+	wg.Add(1)
+
+	go func(f *os.File, wg *sync.WaitGroup) {
+		defer f.Close()
+		defer wg.Done()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case b, ok := <-bChan:
+				if !ok {
+					return
+				}
+
+				_, err := f.Write(b)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "%s: %s: %s", errCannotWrite, f.Name(), err)
+					return
+				}
+			}
+		}
+	}(f, wg)
 }
 
 func main() {
@@ -90,34 +173,15 @@ func main() {
 		append: false,
 	}
 	cfg.parse()
-func readStdin(rc chan<- []byte, ec chan<- error, wg *sync.WaitGroup) {
-	sc := bufio.NewScanner(os.Stdin)
-	sc.Split(func(data []byte, atEOF bool) (advance int, token []byte, err error) {
-		if atEOF {
-			// Data may not be empty: https://pkg.go.dev/bufio#SplitFunc
-			return 0, data, bufio.ErrFinalToken
-		}
 
-		if len(data) > readBufSize {
-			return readBufSize, data[:readBufSize], nil
-		}
+	ctx, stopListening := listenSIGINT(cfg.ignore)
+	defer stopListening()
 
-		if len(data) <= readBufSize {
-			return len(data), data, nil
-		}
+	errCh, process := gtee(ctx, cfg.append)
 
-		return 0, nil, nil
-	})
-
-	for sc.Scan() {
-		b := sc.Bytes()
-		rc <- b
+	for err := range errCh {
+		fmt.Fprint(os.Stderr, err.Error())
 	}
 
-	err := sc.Err()
-	if err != nil {
-		ec <- err
-	}
-	close(rc)
-	wg.Done()
+	process.Wait()
 }
