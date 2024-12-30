@@ -15,6 +15,8 @@ import (
 var (
 	program                  = "gtee"
 	readBufSize              = bufio.MaxScanTokenSize
+	flagIgnoreDescription    = "Ignore the SIGINT signal."
+	flagAppendDescription    = "Append the output to the files rather than overwriting them."
 	signalSIGINTIsIgnored    = fmt.Sprintf("%s: the SIGINT signal is ignored", program)
 	errCannotReadStdin       = fmt.Errorf("%s: cannot read stdin", program)
 	errCannotOpenFileToWrite = fmt.Errorf("%s: cannot open file to write", program)
@@ -27,8 +29,34 @@ type config struct {
 }
 
 func (c *config) parse() {
-	flag.BoolVar(&c.ignore, "i", c.ignore, "Ignore the SIGINT signal.")
-	flag.BoolVar(&c.append, "a", c.append, "Append the output to the files rather than overwriting them.")
+	flag.BoolVar(&c.ignore, "i", c.ignore, flagIgnoreDescription)
+	flag.BoolVar(&c.ignore, "ignore", c.ignore, flagIgnoreDescription)
+	flag.BoolVar(&c.append, "a", c.append, flagAppendDescription)
+	flag.BoolVar(&c.append, "append", c.append, flagAppendDescription)
+
+	bold := func(s string) string {
+		return fmt.Sprintf("\033[1m%s\033[0m", s)
+	}
+
+	flag.Usage = func() {
+		fmt.Printf("%s", bold("NAME"))
+		fmt.Printf("\n")
+		fmt.Printf("\t%s - Duplicate standart input.\n", program)
+		fmt.Printf("\n")
+		fmt.Printf("%s", bold("SYNOPSIS"))
+		fmt.Printf("\n")
+		fmt.Printf("\t%s [-a] [-i] [file ...]\n", bold(program))
+		fmt.Printf("\n")
+		fmt.Printf("%s\n", bold("OPTIONS"))
+		fmt.Printf("\t%s\t%s\n", bold("-i, --i, -ignore, --ignore"), flagIgnoreDescription)
+		fmt.Printf("\t%s\t%s\n", bold("-a, --a, -append, --append"), flagAppendDescription)
+		fmt.Printf("\n")
+		fmt.Printf("%s\n", bold("EXAMPLES"))
+		fmt.Printf("Send the echoed message to both stdout and a file called greetings.txt:\n\n")
+		fmt.Printf("\t$ echo \"Hello\" | %s greetings.txt\n", program)
+		fmt.Printf("\tHello\n")
+	}
+
 	flag.Parse()
 }
 
