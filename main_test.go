@@ -78,13 +78,13 @@ func TestStderr(t *testing.T) {
 	expected := []byte("The standard error shall be used only for diagnostic messages.")
 
 	cases := []struct {
-		name string
-		err  bool
-		file func() string
+		name  string
+		isErr bool
+		file  func() string
 	}{
 		{
-			name: "writeErr",
-			err:  true,
+			name:  "writeErr",
+			isErr: true,
 			file: func() string {
 				dir, err := os.MkdirTemp("", "dir")
 				if err != nil {
@@ -94,8 +94,8 @@ func TestStderr(t *testing.T) {
 			},
 		},
 		{
-			name: "noErr",
-			err:  false,
+			name:  "noErr",
+			isErr: false,
 			file: func() string {
 				f, err := os.CreateTemp("", "file")
 				if err != nil {
@@ -120,18 +120,18 @@ func TestStderr(t *testing.T) {
 		cmd.Stdout = &outbuf
 		cmd.Stderr = &errbuf
 
-		if err := cmd.Run(); err != nil {
+		if err := cmd.Run(); err != nil && !c.isErr {
 			t.Fatalf("Expected to run cmd for %q, but got %q", c.name, err)
 		}
 
 		outb := outbuf.Bytes()
 		errb := errbuf.Bytes()
 
-		if c.err && bytes.Contains(outb, errb) {
+		if c.isErr && bytes.Contains(outb, errb) {
 			t.Fatalf("Expected stdout to not contain stderr: stdout %q, stderr %q", outb, errb)
 		}
 
-		if !c.err && len(errb) > 0 {
+		if !c.isErr && len(errb) > 0 {
 			t.Fatalf("Expected stderr to be empty, but got %q", errb)
 		}
 	}
@@ -268,6 +268,78 @@ func TestFileOperands(t *testing.T) {
 
 		if !slices.Equal(expected, rb) {
 			t.Fatalf("Expected stdin and file to be equal, stdin: %q, file: %q", expected, rb)
+		}
+	}
+}
+
+func TestExitCodes(t *testing.T) {
+	cases := []struct {
+		name string
+		code int
+		file func() string
+	}{
+		{
+			name: "An error occured.",
+			code: 1,
+			file: func() string {
+				dir, err := os.MkdirTemp("", "dir")
+				if err != nil {
+					t.Fatalf("Could not create a temp dir: %q", err)
+				}
+
+				return dir
+			},
+		},
+		{
+			name: "The standard input was successfully copied to all output files.",
+			code: 0,
+			file: func() string {
+				f, err := os.CreateTemp("", "file")
+				if err != nil {
+					t.Fatalf("Could not create a temp dir: %q", err)
+				}
+
+				return f.Name()
+			},
+		},
+	}
+
+	for _, c := range cases {
+		expected := []byte(c.name)
+
+		f := c.file()
+		defer cleanup(f)
+
+		cmd := exec.Command(gtee, f)
+
+		var outbuf bytes.Buffer
+		var errbuf bytes.Buffer
+
+		cmd.Stdin = bytes.NewReader(expected)
+		cmd.Stdout = &outbuf
+		cmd.Stderr = &errbuf
+
+		err := cmd.Run()
+		errb := errbuf.Bytes()
+
+		if c.code == 0 {
+			if err != nil {
+				t.Fatalf("Expected to get no cmd err for code 0 but got %q", err)
+			}
+
+			if len(errb) > 0 {
+				t.Fatalf("Expected stderr to be empty for code 0, but got %q", errb)
+			}
+		}
+
+		if c.code > 0 {
+			if err == nil {
+				t.Fatalf("Expected to get cmd err for code >0 but got %q", err)
+			}
+
+			if len(errb) == 0 {
+				t.Fatal("Expected stderr to have a diagnostic message for code >0, but got nothing")
+			}
 		}
 	}
 }

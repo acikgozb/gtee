@@ -19,7 +19,7 @@ var (
 	readBufSize              = bufio.MaxScanTokenSize
 	flagIgnoreDescription    = "Ignore the SIGINT signal."
 	flagAppendDescription    = "Append the output to the files rather than overwriting them."
-	signalSIGINTIsIgnored    = fmt.Sprintf("%s: the SIGINT signal is ignored", program)
+	signalSIGINTIsIgnored    = fmt.Sprintf("%s: the SIGINT signal is ignored\n", program)
 	errCannotReadStdin       = fmt.Errorf("%s: cannot read stdin", program)
 	errCannotOpenFileToWrite = fmt.Errorf("%s: cannot open file to write", program)
 	errCannotWrite           = fmt.Errorf("%s: cannot write to file", program)
@@ -88,26 +88,40 @@ func listenSIGINT(ignore bool) (context.Context, func()) {
 	return ctx, stop
 }
 
-func gtee(ctx context.Context, append bool) (<-chan error, *sync.WaitGroup) {
+func run(ctx context.Context, append bool) <-chan error {
 	var wg sync.WaitGroup
 
-	fs := openFiles(flag.Args(), getFlag(append))
-	bChans, errChan := readStdin(ctx, len(fs), &wg)
+	errChan := make(chan error)
+
+	fnames := getFnames(flag.Args())
+	fs := openFiles(fnames, getFlag(append), errChan, &wg)
+
+	bChans := readStdin(ctx, len(fs), errChan, &wg)
 
 	for i, f := range fs {
-		writeFile(ctx, f, bChans[i], &wg)
+		writeFile(ctx, f, bChans[i], errChan, &wg)
 	}
 
-	return errChan, &wg
+	go func() {
+		wg.Wait()
+		close(errChan)
+	}()
+
+	return errChan
 }
 
-func openFiles(fnames []string, flag int) []*os.File {
+func openFiles(fnames []string, flag int, errChan chan<- error, wg *sync.WaitGroup) []*os.File {
 	fs := make([]*os.File, 0)
 
 	for _, fname := range fnames {
 		f, err := os.OpenFile(fname, flag, 0644)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "%s: %s: %s\n", errCannotOpenFileToWrite, fname, err)
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				errChan <- fmt.Errorf("%s: %s: %s", errCannotOpenFileToWrite, fname, err)
+			}()
+
 			continue
 		}
 		fs = append(fs, f)
@@ -116,19 +130,17 @@ func openFiles(fnames []string, flag int) []*os.File {
 	return append(fs, os.Stdout)
 }
 
-func readStdin(ctx context.Context, fc int, wg *sync.WaitGroup) ([]chan []byte, <-chan error) {
-	errChan := make(chan error, 1)
+func readStdin(ctx context.Context, fc int, errChan chan<- error, wg *sync.WaitGroup) []chan []byte {
 	bChans := make([]chan []byte, fc)
 	for i := range bChans {
 		bChans[i] = make(chan []byte)
 	}
 
 	close := func() {
-		wg.Done()
 		for _, bChan := range bChans {
 			close(bChan)
 		}
-		close(errChan)
+		wg.Done()
 	}
 
 	wg.Add(1)
@@ -164,7 +176,20 @@ func readStdin(ctx context.Context, fc int, wg *sync.WaitGroup) ([]chan []byte, 
 		}
 	}()
 
-	return bChans, errChan
+	return bChans
+}
+
+func getFnames(args []string) []string {
+	fnames := make([]string, 0)
+	m := make(map[string]bool, 0)
+
+	for _, fname := range args {
+		if _, ok := m[fname]; !ok {
+			m[fname] = true
+			fnames = append(fnames, fname)
+		}
+	}
+	return fnames
 }
 
 func getFlag(append bool) int {
@@ -174,12 +199,13 @@ func getFlag(append bool) int {
 	return os.O_CREATE | os.O_WRONLY
 }
 
-func writeFile(ctx context.Context, f *os.File, bChan <-chan []byte, wg *sync.WaitGroup) {
+func writeFile(ctx context.Context, f *os.File, bChan <-chan []byte, errChan chan<- error, wg *sync.WaitGroup) {
 	wg.Add(1)
 
 	go func(f *os.File, wg *sync.WaitGroup) {
-		defer f.Close()
 		defer wg.Done()
+		defer f.Close()
+		defer f.Sync()
 
 		for {
 			select {
@@ -192,14 +218,16 @@ func writeFile(ctx context.Context, f *os.File, bChan <-chan []byte, wg *sync.Wa
 
 				_, err := f.Write(b)
 				if err != nil {
-					fmt.Fprintf(os.Stderr, "%s: %s: %s", errCannotWrite, f.Name(), err)
+					errChan <- fmt.Errorf("%s: %s: %s", errCannotWrite, f.Name(), err)
 				}
 			}
 		}
 	}(f, wg)
 }
 
-func main() {
+func gtee() int {
+	var code int
+
 	cfg := config{
 		ignore: false,
 		append: false,
@@ -209,11 +237,16 @@ func main() {
 	ctx, stopListening := listenSIGINT(cfg.ignore)
 	defer stopListening()
 
-	errCh, process := gtee(ctx, cfg.append)
+	errCh := run(ctx, cfg.append)
 
 	for err := range errCh {
 		fmt.Fprint(os.Stderr, err.Error())
+		code = 1
 	}
 
-	process.Wait()
+	return code
+}
+
+func main() {
+	os.Exit(gtee())
 }
