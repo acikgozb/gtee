@@ -45,14 +45,14 @@ func cleanup(fname string) error {
 func TestMain(t *testing.M) {
 	err := build()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "cannot build the binary to test: %s\n", err)
+		fmt.Fprintf(os.Stderr, "cannot build the binary to test: %q\n", err)
 		os.Exit(1)
 	}
 
 	code := t.Run()
 
 	if err := cleanup(gtee); err != nil {
-		fmt.Fprintf(os.Stderr, "cannot remove the binary: %s\n", err)
+		fmt.Fprintf(os.Stderr, "cannot remove the binary: %q\n", err)
 		os.Exit(1)
 	}
 
@@ -70,7 +70,7 @@ func TestStdout(t *testing.T) {
 	}
 
 	if string(expected) != string(out) {
-		t.Fatalf("expected %s but got %s", string(expected), string(out))
+		t.Fatalf("expected %q but got %q", string(expected), string(out))
 	}
 }
 
@@ -88,7 +88,7 @@ func TestStderr(t *testing.T) {
 			file: func() string {
 				dir, err := os.MkdirTemp("", "dir")
 				if err != nil {
-					t.Fatalf("Could not create a temp dir: %s", err)
+					t.Fatalf("Could not create a temp dir: %q", err)
 				}
 				return dir
 			},
@@ -99,7 +99,7 @@ func TestStderr(t *testing.T) {
 			file: func() string {
 				f, err := os.CreateTemp("", "file")
 				if err != nil {
-					t.Fatalf("Could not create a temp file: %s", err)
+					t.Fatalf("Could not create a temp file: %q", err)
 				}
 
 				return f.Name()
@@ -121,18 +121,18 @@ func TestStderr(t *testing.T) {
 		cmd.Stderr = &errbuf
 
 		if err := cmd.Run(); err != nil {
-			t.Fatalf("Expected to run cmd for %s, but got %s", c.name, err)
+			t.Fatalf("Expected to run cmd for %q, but got %q", c.name, err)
 		}
 
 		outb := outbuf.Bytes()
 		errb := errbuf.Bytes()
 
 		if c.err && bytes.Contains(outb, errb) {
-			t.Fatalf("Expected stdout to not contain stderr: stdout %s, stderr %s", outb, errb)
+			t.Fatalf("Expected stdout to not contain stderr: stdout %q, stderr %q", outb, errb)
 		}
 
 		if !c.err && len(errb) > 0 {
-			t.Fatalf("Expected stderr to be empty, but got %s", errb)
+			t.Fatalf("Expected stderr to be empty, but got %q", errb)
 		}
 	}
 }
@@ -142,7 +142,7 @@ func TestCopy(t *testing.T) {
 
 	f, err := os.CreateTemp("", "file")
 	if err != nil {
-		t.Fatalf("Expected to create a temp file, but got %s", err)
+		t.Fatalf("Expected to create a temp file, but got %q", err)
 	}
 
 	defer cleanup(f.Name())
@@ -157,30 +157,117 @@ func TestCopy(t *testing.T) {
 	cmd.Stderr = &errbuf
 
 	if err := cmd.Run(); err != nil {
-		t.Fatalf("Expected to run cmd, but got %s", err)
+		t.Fatalf("Expected to run cmd, but got %q", err)
 	}
 
 	errb := errbuf.Bytes()
 	if len(errb) > 0 {
-		t.Fatalf("Expected to have no errors but got %s", errb)
+		t.Fatalf("Expected to have no errors but got %q", errb)
 	}
 
 	outb := outbuf.Bytes()
 	if !slices.Equal(expected, outb) {
-		t.Fatalf("Expected stdin and stdout to be equal: stdin %s, stdout %s", expected, outb)
+		t.Fatalf("Expected stdin and stdout to be equal: stdin %q, stdout %q", expected, outb)
 	}
 
 	f, err = os.Open(f.Name())
 	if err != nil {
-		t.Fatalf("Expected to open temp file after copying, but got %s", err)
+		t.Fatalf("Expected to open temp file after copying, but got %q", err)
 	}
 
 	fb := make([]byte, len(expected))
 	if _, err = f.Read(fb); err != nil && !errors.Is(err, io.EOF) {
-		t.Fatalf("Expected to read temp file after copying, but got %s", err)
+		t.Fatalf("Expected to read temp file after copying, but got %q", err)
 	}
 
 	if !slices.Equal(expected, fb) {
-		t.Fatalf("Expected stdin and file to be equal: stdin %s, file %s", expected, fb)
+		t.Fatalf("Expected stdin and file to be equal: stdin %q, file %q", expected, fb)
+	}
+}
+
+func TestHyphenFileOperand(t *testing.T) {
+	expected := []byte("If a file operand is '-', it shall refer to a file named '-'; implementations shall not treat it as meaning standard output.")
+	fname := "-"
+
+	cmd := exec.Command(gtee, fname)
+
+	var errbuf bytes.Buffer
+
+	cmd.Stdin = bytes.NewReader(expected)
+	cmd.Stdout = nil
+	cmd.Stderr = &errbuf
+
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("Expected to run cmd, but got %q", err)
+	}
+
+	errb := errbuf.Bytes()
+	if len(errb) > 0 {
+		t.Fatalf("Expected to have no errors, but got %q", errb)
+	}
+
+	f, err := os.Open(fname)
+	if err != nil {
+		t.Fatalf("Expected to have a file named %s, but got %q", fname, err)
+	}
+	defer cleanup(fname)
+
+	fb := make([]byte, len(expected))
+	if _, err = f.Read(fb); err != nil && !errors.Is(err, io.EOF) {
+		t.Fatalf("Expected to read a file named %s, but got %q", fname, err)
+	}
+
+	if !slices.Equal(expected, fb) {
+		t.Fatalf("Expected file and stdin to be equal, but got %q", err)
+	}
+}
+
+func TestFileOperands(t *testing.T) {
+	expected := []byte("Processing of at least 13 file operands shall be supported.")
+
+	fnames := make([]string, 13)
+	for i := 0; i < 13; i++ {
+		fnames[i] = fmt.Sprintf("file%d", i)
+	}
+
+	var errbuf bytes.Buffer
+	var outbuf bytes.Buffer
+
+	cmd := exec.Command(gtee, fnames...)
+
+	cmd.Stdin = bytes.NewReader(expected)
+	cmd.Stdout = &outbuf
+	cmd.Stderr = &errbuf
+
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("Expected to run cmd, but got %q", err)
+	}
+
+	errb := errbuf.Bytes()
+	if len(errb) > 0 {
+		t.Fatalf("Expected to have no errors but got %q", errb)
+	}
+
+	outb := outbuf.Bytes()
+	if !slices.Equal(expected, outb) {
+		t.Fatalf("Expected stdin and stdout to be equal: stdin: %q, stdout: %q", expected, outb)
+	}
+
+	for _, fname := range fnames {
+		defer cleanup(fname)
+
+		f, err := os.Open(fname)
+		if err != nil {
+			t.Fatalf("Expected to open the file %q, but got %q", fname, err)
+		}
+
+		rb := make([]byte, len(expected))
+		if _, err = f.Read(rb); err != nil && !errors.Is(err, io.EOF) {
+			t.Fatalf("Expected to read the file %q, but got %q", fname, err)
+		}
+
+		if !slices.Equal(expected, rb) {
+			t.Fatalf("Expected stdin and file to be equal, stdin: %q, file: %q", expected, rb)
+		}
 	}
 }
