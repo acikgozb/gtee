@@ -2,7 +2,9 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -89,20 +91,29 @@ func listenSIGINT(ignore bool) (context.Context, func()) {
 func gtee(ctx context.Context, append bool) (<-chan error, *sync.WaitGroup) {
 	var wg sync.WaitGroup
 
-	fc := len(flag.Args()) + 1
-	bChans, errChan := readStdin(ctx, fc, &wg)
+	fs := openFiles(flag.Args(), getFlag(append))
+	bChans, errChan := readStdin(ctx, len(fs), &wg)
 
-	for i, fname := range flag.Args() {
-		f, err := openFile(fname, fileFlag(append))
-		if err != nil {
-			continue
-		}
+	for i, f := range fs {
 		writeFile(ctx, f, bChans[i], &wg)
 	}
 
-	writeFile(ctx, os.Stdout, bChans[len(bChans)-1], &wg)
-
 	return errChan, &wg
+}
+
+func openFiles(fnames []string, flag int) []*os.File {
+	fs := make([]*os.File, 0)
+
+	for _, fname := range fnames {
+		f, err := os.OpenFile(fname, flag, 0644)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "%s: %s: %s\n", errCannotOpenFileToWrite, fname, err)
+			continue
+		}
+		fs = append(fs, f)
+	}
+
+	return append(fs, os.Stdout)
 }
 
 func readStdin(ctx context.Context, fc int, wg *sync.WaitGroup) ([]chan []byte, <-chan error) {
@@ -128,7 +139,7 @@ func readStdin(ctx context.Context, fc int, wg *sync.WaitGroup) ([]chan []byte, 
 		bbuf := make([]byte, readBufSize)
 		for {
 			n, err := os.Stdin.Read(rbuf)
-			if n == 0 && err == io.EOF {
+			if n == 0 && errors.Is(err, io.EOF) {
 				return
 			}
 
@@ -136,12 +147,17 @@ func readStdin(ctx context.Context, fc int, wg *sync.WaitGroup) ([]chan []byte, 
 				return
 			}
 
-			if err != nil {
+			if err != nil && !errors.Is(err, io.EOF) {
 				errChan <- fmt.Errorf("%s: %s", errCannotReadStdin, err)
 				return
 			}
 
 			copy(bbuf, rbuf)
+
+			if n < len(bbuf) {
+				bbuf = bytes.Trim(bbuf, "\x00")
+			}
+
 			for _, bChan := range bChans {
 				bChan <- bbuf
 			}
@@ -151,22 +167,11 @@ func readStdin(ctx context.Context, fc int, wg *sync.WaitGroup) ([]chan []byte, 
 	return bChans, errChan
 }
 
-func fileFlag(append bool) int {
+func getFlag(append bool) int {
 	if append {
 		return os.O_CREATE | os.O_APPEND | os.O_WRONLY
 	}
-
 	return os.O_CREATE | os.O_WRONLY
-}
-
-func openFile(fname string, flag int) (*os.File, error) {
-	file, err := os.OpenFile(fname, flag, 0644)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "%s: %s: %s", errCannotOpenFileToWrite, fname, err)
-		return nil, err
-	}
-
-	return file, err
 }
 
 func writeFile(ctx context.Context, f *os.File, bChan <-chan []byte, wg *sync.WaitGroup) {
@@ -188,7 +193,6 @@ func writeFile(ctx context.Context, f *os.File, bChan <-chan []byte, wg *sync.Wa
 				_, err := f.Write(b)
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "%s: %s: %s", errCannotWrite, f.Name(), err)
-					return
 				}
 			}
 		}
