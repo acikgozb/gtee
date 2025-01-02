@@ -343,3 +343,52 @@ func TestExitCodes(t *testing.T) {
 		}
 	}
 }
+
+func TestAppend(t *testing.T) {
+	expected := []byte("Append the output to the files with -a.")
+
+	f, err := os.Create("file")
+	if err != nil {
+		t.Fatalf("Could not create a temp file: %q", err)
+	}
+	defer cleanup(f.Name())
+
+	if _, err = f.Write(expected); err != nil {
+		t.Fatalf("Could not write on a temp file: %q", err)
+	}
+
+	f.Sync()
+	f.Close()
+
+	cmd := exec.Command(gtee, "-a", f.Name())
+
+	var errbuf bytes.Buffer
+
+	cmd.Stdin = bytes.NewReader(expected)
+	cmd.Stdout = nil
+	cmd.Stderr = &errbuf
+
+	if err = cmd.Run(); err != nil {
+		t.Fatalf("Expected to run cmd, but got %q", err)
+	}
+
+	errb := errbuf.Bytes()
+	if len(errb) > 0 {
+		t.Fatalf("Expected to have no errors but got %q", errb)
+	}
+
+	tf, err := os.Open(f.Name())
+	if err != nil {
+		t.Fatalf("Could not open the temp file after appending it, but got %q", err)
+	}
+
+	rb := make([]byte, len(expected)*2)
+	if _, err := tf.Read(rb); err != nil && !errors.Is(err, io.EOF) {
+		t.Fatalf("Expected to read the temp file after appending it, but got %q", err)
+	}
+
+	trimmed := bytes.Trim(rb, "\x00")
+	if len(trimmed) != len(rb) {
+		t.Fatalf("Expected byte count %d to double after appending, but got %d", len(expected), len(trimmed))
+	}
+}
