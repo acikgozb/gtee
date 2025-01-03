@@ -397,7 +397,7 @@ func TestAppend(t *testing.T) {
 }
 
 func TestIgnore(t *testing.T) {
-	expected := []byte("Ignore the SIGINT signal with -i.")
+	expected := []byte("If the -i option was specified, SIGINT shall be ignored.")
 
 	cmd := exec.Command(gtee, "-i")
 
