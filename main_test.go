@@ -2,13 +2,16 @@ package main_test
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"slices"
+	"syscall"
 	"testing"
+	"time"
 )
 
 // The test cases are mainly inspired by the POSIX specification of `tee`:
@@ -66,11 +69,11 @@ func TestStdout(t *testing.T) {
 
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("Expected to have no errors but got %q", err)
 	}
 
 	if string(expected) != string(out) {
-		t.Fatalf("expected %q but got %q", string(expected), string(out))
+		t.Fatalf("Expected %q but got %q", string(expected), string(out))
 	}
 }
 
@@ -121,7 +124,7 @@ func TestStderr(t *testing.T) {
 		cmd.Stderr = &errbuf
 
 		if err := cmd.Run(); err != nil && !c.isErr {
-			t.Fatalf("Expected to run cmd for %q, but got %q", c.name, err)
+			t.Fatalf("Expected to run the cmd for %q, but got %q", c.name, err)
 		}
 
 		outb := outbuf.Bytes()
@@ -157,7 +160,7 @@ func TestCopy(t *testing.T) {
 	cmd.Stderr = &errbuf
 
 	if err := cmd.Run(); err != nil {
-		t.Fatalf("Expected to run cmd, but got %q", err)
+		t.Fatalf("Expected to run the cmd, but got %q", err)
 	}
 
 	errb := errbuf.Bytes()
@@ -172,12 +175,12 @@ func TestCopy(t *testing.T) {
 
 	f, err = os.Open(f.Name())
 	if err != nil {
-		t.Fatalf("Expected to open temp file after copying, but got %q", err)
+		t.Fatalf("Expected to open the temp file after copying, but got %q", err)
 	}
 
 	fb := make([]byte, len(expected))
 	if _, err = f.Read(fb); err != nil && !errors.Is(err, io.EOF) {
-		t.Fatalf("Expected to read temp file after copying, but got %q", err)
+		t.Fatalf("Expected to read the temp file after copying, but got %q", err)
 	}
 
 	if !slices.Equal(expected, fb) {
@@ -198,12 +201,12 @@ func TestHyphenFileOperand(t *testing.T) {
 	cmd.Stderr = &errbuf
 
 	if err := cmd.Run(); err != nil {
-		t.Fatalf("Expected to run cmd, but got %q", err)
+		t.Fatalf("Expected to run the cmd, but got %q", err)
 	}
 
 	errb := errbuf.Bytes()
 	if len(errb) > 0 {
-		t.Fatalf("Expected to have no errors, but got %q", errb)
+		t.Fatalf("Expected to have no errors but got %q", errb)
 	}
 
 	f, err := os.Open(fname)
@@ -240,7 +243,7 @@ func TestFileOperands(t *testing.T) {
 	cmd.Stderr = &errbuf
 
 	if err := cmd.Run(); err != nil {
-		t.Fatalf("Expected to run cmd, but got %q", err)
+		t.Fatalf("Expected to run the cmd, but got %q", err)
 	}
 
 	errb := errbuf.Bytes()
@@ -334,7 +337,7 @@ func TestExitCodes(t *testing.T) {
 
 		if c.code > 0 {
 			if err == nil {
-				t.Fatalf("Expected to get cmd err for code >0 but got %q", err)
+				t.Fatalf("Expected to get a cmd err for code >0 but got %q", err)
 			}
 
 			if len(errb) == 0 {
@@ -369,7 +372,7 @@ func TestAppend(t *testing.T) {
 	cmd.Stderr = &errbuf
 
 	if err = cmd.Run(); err != nil {
-		t.Fatalf("Expected to run cmd, but got %q", err)
+		t.Fatalf("Expected to run the cmd, but got %q", err)
 	}
 
 	errb := errbuf.Bytes()
@@ -390,5 +393,55 @@ func TestAppend(t *testing.T) {
 	trimmed := bytes.Trim(rb, "\x00")
 	if len(trimmed) != len(rb) {
 		t.Fatalf("Expected byte count %d to double after appending, but got %d", len(expected), len(trimmed))
+	}
+}
+
+func TestIgnore(t *testing.T) {
+	expected := []byte("If the -i option was specified, SIGINT shall be ignored.")
+
+	cmd := exec.Command(gtee, "-i")
+
+	var outbuf bytes.Buffer
+	var errbuf bytes.Buffer
+	r, w := io.Pipe()
+
+	cmd.Stdin = r
+	cmd.Stdout = &outbuf
+	cmd.Stderr = &errbuf
+
+	// It is expected to ignore interrupts on long running processes,
+	// Therefore a long running write and an interrupt signal are simulated
+	// via context.WithTimeout.
+	sigCtx, sigCancel := context.WithTimeout(context.Background(), time.Millisecond*250)
+	wCtx, wCancel := context.WithTimeout(context.Background(), time.Millisecond*500)
+	defer sigCancel()
+	defer wCancel()
+
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("Expected to start the cmd but got %q", err)
+	}
+
+	go func() {
+		defer w.Close()
+
+		<-sigCtx.Done()
+		cmd.Process.Signal(syscall.SIGINT)
+
+		<-wCtx.Done()
+		w.Write(expected)
+	}()
+
+	if err := cmd.Wait(); err != nil {
+		t.Fatalf("Expected to run the cmd but got %q", err)
+	}
+
+	errb := errbuf.Bytes()
+	if len(errb) > 0 {
+		t.Fatalf("Expected to have no errors but got %q", errb)
+	}
+
+	outb := outbuf.Bytes()
+	if len(outb) == len(expected) {
+		t.Fatalf("Expected to have a message about SIGINT on stdout but got %q", outb)
 	}
 }
