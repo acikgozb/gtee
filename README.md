@@ -6,24 +6,54 @@ A Go implementation of `tee`, a GNU Coreutils tool. The original implementation 
 
 <!--toc:start-->
 
-- [Installation](#installation)
-- [Usage](#usage)
-- [The Implementation](#the-implementation)
-- [Tests](#tests)
-- [Benchmarks](#benchmarks)
-- [TODO](#todo)
-
+- [Installation](#a-idinstallation-installation)
+  - [`go install`](#go-install)
+  - [Prebuilt Binaries](#prebuilt-binaries)
+- [Usage](#a-idusage-usage)
+- [The Implementation](#a-idthe-implementation-the-implementation)
+- [Tests](#a-idtests-tests)
+- [Benchmarks](#a-idbenchmarks-benchmarks)
+- [TODO](#a-idtodo-todo)
 <!--toc:end-->
 
 ## <a id='installation' /> Installation
 
-Right now, the only way to install `gtee` is through `go install`, so you need to have Go runtime installed on your machine:
+`gtee` is available on Linux and MacOS.
+
+### <a id='go-install' /> `go install`
+
+As a Go project, `gtee` can be installed via `go install`, like below:
 
 ```bash
 go install github.com/acikgozb/gtee
 ```
 
-I am working on creating prebuilt binaries for Linux and Darwin, once that is done you will be able to install through release page.
+### <a id='prebuilt-binaries' /> Prebuilt Binaries
+
+If you wish to not install Go on your machine just to install `gtee`, you can download a prebuilt binary from the release page.
+The binaries are available for the platforms below:
+
+- _x86_64_ (amd64) Linux
+- _arm64_ Darwin (macOS)
+
+You can download the version you wish to use and then extract the binary from the archive to wherever you want.
+
+Once downloaded and put into a directory, you can verify the installation by simply running:
+
+```bash
+gtee -h
+```
+
+If you see the usage, then you are all set!
+
+Don't forget to make sure the binary is under `$PATH` to be able to use it without manually entering the location of the binary itself.
+To verify whether `gtee` is under path, you can run:
+
+```bash
+which gtee
+```
+
+If `which` returns a path, that means you can successfully use `gtee` without specifying the full path of the binary.
 
 ## <a id='usage' /> Usage
 
