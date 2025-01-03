@@ -36,10 +36,9 @@ $ echo "write me, a super long input!" | gtee --i example.txt > /dev/null
 $ echo "write me, a super long input!" | gtee -ignore example.txt > /dev/null
 $ echo "write me, a super long input!" | gtee --ignore example.txt > /dev/null
 
-# Attempting to send a SIGINT signal notifies user through stdout.
+# Attempting to send a SIGINT signal results in a diagnostic message on stdout, not err.
 $ echo "write me, a super long input!" | gtee -i example.txt > /dev/null
 $ ^Cgtee: The SIGINT signal is ignored.
-
 
 # Append to a file named "example.txt" and ignore the SIGINT signal.
 $ echo "append me, a super long input!" | gtee -a -i example.txt > /dev/null
