@@ -74,7 +74,7 @@ Running `gtee` with `-h` or with a non-supported flag will result in showing the
 $ gtee -h # --h, -help, --help
 
 NAME
-	gtee - Duplicate standart input.
+	gtee - Duplicate standard input.
 
 SYNOPSIS
 	gtee [-a] [-i] [file ...]

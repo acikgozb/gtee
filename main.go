@@ -43,7 +43,7 @@ func (c *config) parse() {
 	flag.Usage = func() {
 		fmt.Printf("%s", bold("NAME"))
 		fmt.Printf("\n")
-		fmt.Printf("\t%s - Duplicate standart input.\n", program)
+		fmt.Printf("\t%s - Duplicate standard input.\n", program)
 		fmt.Printf("\n")
 		fmt.Printf("%s", bold("SYNOPSIS"))
 		fmt.Printf("\n")
