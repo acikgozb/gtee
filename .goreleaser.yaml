@@ -1,45 +1,79 @@
-# This is an example .goreleaser.yml file with some sensible defaults.
-# Make sure to check the documentation at https://goreleaser.com
-
-# The lines below are called `modelines`. See `:help modeline`
-# Feel free to remove those if you don't want/need to use them.
 # yaml-language-server: $schema=https://goreleaser.com/static/schema.json
 # vim: set ts=2 sw=2 tw=0 fo=cnqoj
 
 version: 2
 
-before:
-  hooks:
-    # You may remove this if you don't use go modules.
-    - go mod tidy
-    # you may remove this if you don't need go generate
-    - go generate ./...
-
+# `go tool` configuration that is used by `go build`.
 builds:
-  - env:
+  - id: "gtee"
+    main: "."
+    binary: "gtee"
+    ldflags:
+     - "-s" # Omit the symbol table and debug information.
+     - "-w" # Omit the DWARF symbol table.
+    buildmode: ""
+    env:
       - CGO_ENABLED=0
     goos:
-      - linux
-      - windows
-      - darwin
+      - "linux"
+      - "darwin"
+    goarch:
+      - "amd64"
+      - "arm64"
+    goamd64:
+      - v1
+    goarm64:
+      - v8.0
+    ignore:
+      - goos: "linux"
+        goarch: "arm64"
+      - goos: "darwin"
+        goarch: "amd64"
+    tool: "go"
+    command: "build"
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    # Build every single binary combination under ./dist. No subdirectories.
+    no_unique_dist_dir: true 
+    # Function main is at root, no need to check subdirs.
+    no_main_check: true 
+    # Main dir that contains Go code. It's the same that is used with 'go build' or other Go commands.
+    dir: "." 
+    builder: "go"
 
+# Configuration for each binary archive.
 archives:
-  - format: tar.gz
-    # this name template makes the OS and Arch compatible with the results of `uname`.
+  - id: gtee-archives
+    builds:
+      - gtee
+    format: "tar.gz"
+    # This name template makes the OS and Arch compatible with the results of `uname`.
     name_template: >-
-      {{ .ProjectName }}_
-      {{- title .Os }}_
-      {{- if eq .Arch "amd64" }}x86_64
-      {{- else if eq .Arch "386" }}i386
-      {{- else }}{{ .Arch }}{{ end }}
-      {{- if .Arm }}v{{ .Arm }}{{ end }}
-    # use zip for windows archives
-    format_overrides:
-      - goos: windows
-        format: zip
+      {{ .ProjectName }}_{{- title .Os }}_{{- if eq .Arch "amd64" }}x86_64{{- else }}{{ .Arch }}{{ end }}_{{ .Version }}
+
+    # When the archive is unarchived, everything is extraced under a directory with the same name as archive.
+    wrap_in_directory: true 
+    # File stats which is applied to all binaries.
+    builds_info: 
+      group: root
+      owner: root
+      mode: 0644
+    # Additional files (Defaults are used except CHANGELOG to explicitly show what goes into an archive).
+    files: 
+      - LICENSE
+      - README.md
+    # Disables the binary count check.
+    allow_different_binary_count: true
+
 
 changelog:
-  sort: asc
+  # Enable generating a changelog on each release.
+  disable: false
+  # The changelog generation implementation. Extracts information from `git log`.
+  use: git
+  # Changelog format.
+  format: "{{.SHA}}: {{.Message}} (@{{.AuthorUsername}})"
+  sort: "desc"
+  # Exclude commits which matches the regexp listed below.
   filters:
     exclude:
       - "^docs:"
