@@ -151,6 +151,4 @@ ok  	github.com/acikgozb/gtee	12.470s
 
 ## <a id='todo' /> TODO
 
-- Binary distribution & proper release tagging.
-- Updating this README with installation steps.
 - `man gtee`.
