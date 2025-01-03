@@ -445,3 +445,90 @@ func TestIgnore(t *testing.T) {
 		t.Fatalf("Expected to have a message about SIGINT on stdout but got %q", outb)
 	}
 }
+
+func prepareBenchCmdFiles(bin string) (string, string, error) {
+	fStdin, err := os.CreateTemp("", "bin-stdin")
+	if err != nil {
+		return "", "", err
+	}
+
+	writeCmd := exec.Command("dd", "if=/dev/urandom", "bs=100m", "count=1")
+	writeCmd.Stdout = fStdin
+
+	if err := writeCmd.Run(); err != nil {
+		return "", "", err
+	}
+
+	fStdin.Sync()
+
+	fOut, err := os.CreateTemp("", "bin-file")
+	if err != nil {
+		return "", "", err
+	}
+	defer fOut.Close()
+
+	return fStdin.Name(), fOut.Name(), nil
+}
+
+func getBenchCmd(bin, fnStdin, fnOut string) (*exec.Cmd, error) {
+	cmd := exec.Command(bin, fnOut)
+
+	fStdin, err := os.Open(fnStdin)
+	if err != nil {
+		return nil, err
+	}
+
+	cmd.Stdin = fStdin
+	cmd.Stdout = nil
+	cmd.Stderr = nil
+
+	return cmd, nil
+}
+
+func BenchmarkTee(b *testing.B) {
+	bin := "tee"
+
+	fnStdin, fnOut, err := prepareBenchCmdFiles(bin)
+	if err != nil {
+		b.Fatalf("Expected to prepare the benchmark file but got %q", err)
+	}
+	defer cleanup(fnStdin)
+	defer cleanup(fnOut)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		b.StopTimer()
+		cmd, err := getBenchCmd(bin, fnStdin, fnOut)
+		if err != nil {
+			b.Fatalf("Expected to get the benchmark cmd but got %q", err)
+		}
+
+		b.StartTimer()
+		if err := cmd.Run(); err != nil {
+			b.Fatalf("Expected to run the command but got %q", err)
+		}
+	}
+}
+
+func BenchmarkGtee(b *testing.B) {
+	fnStdin, fnOut, err := prepareBenchCmdFiles(gtee)
+	if err != nil {
+		b.Fatalf("Expected to prepare the benchmark file but got %q", err)
+	}
+	defer cleanup(fnStdin)
+	defer cleanup(fnOut)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		b.StopTimer()
+		cmd, err := getBenchCmd(gtee, fnStdin, fnOut)
+		if err != nil {
+			b.Fatalf("Expected to get the benchmark cmd but got %q", err)
+		}
+
+		b.StartTimer()
+		if err := cmd.Run(); err != nil {
+			b.Fatalf("Expected to run the command but got %q", err)
+		}
+	}
+}
