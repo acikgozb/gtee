@@ -71,7 +71,7 @@ Running `gtee` with `-h` or with a non-supported flag will result in showing the
 
 ```bash
 # Show usage:
-$ gtee [-h | --h | -help | --help]
+$ gtee -h # --h, -help, --help
 
 NAME
 	gtee - Duplicate standart input.
