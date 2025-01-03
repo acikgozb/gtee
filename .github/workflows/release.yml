@@ -1,0 +1,53 @@
+name: Release gtee
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - v*.*.*
+
+permissions:
+  contents: write
+
+jobs:
+  # NOTE: acikgozb: Extract this into a reusable action, which will be triggered on each pull request.
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 1.22.3
+
+      - name: Run e2e tests
+        run: |
+          go test -v
+        shell: /bin/bash
+
+  goreleaser:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 1.22.3
+
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          args: "release --clean"
+        env:
+          GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
+
