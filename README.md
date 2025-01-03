@@ -8,9 +8,10 @@ The installation steps will be explained in detail once the initial version is r
 
 ## Usage
 
-`gtee` is designed to be used as a drop in replacement of `tee` with the exception of merging shorthand options like `-ai`.
-This is due to not using a custom CLI parser.
-Go's `flag` package do not support this usage by default.
+`gtee` is designed to be used as a drop in replacement of `tee` with the exception of:
+
+- Merging shorthand options like `-ai`,
+- Environment variables that alter the language of diagnostic messages.
 
 Here are the supported usages:
 
@@ -98,3 +99,9 @@ BenchmarkGtee-10    	     100	  49339303 ns/op	    5988 B/op	      22 allocs/op
 PASS
 ok  	github.com/acikgozb/gtee	12.470s
 ```
+
+## TODO
+
+- Binary distribution & proper release tagging.
+- Updating this README with installation steps.
+- `man gtee`.
