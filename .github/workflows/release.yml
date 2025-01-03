@@ -2,8 +2,6 @@ name: Release gtee
 
 on:
   push:
-    branches:
-      - main
     tags:
       - v*.*.*
 
@@ -26,7 +24,7 @@ jobs:
       - name: Run e2e tests
         run: |
           go test -v
-        shell: /bin/bash
+        shell: bash
 
   goreleaser:
     runs-on: ubuntu-latest
