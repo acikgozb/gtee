@@ -51,20 +51,20 @@ $ echo "append me, a super long input!" | gtee --append --ignore example.txt > /
 Running `gtee` with `-h` or with a non-supported flag will result in showing the usage of the program, which is inspired from the man page of `tee`:
 
 ```bash
-# Show usage (intentionally):
-$ gtee [-h|--h|-help|--help]
+# Show usage:
+$ gtee [-h | --h | -help | --help]
 
-[1mNAME[0m
+NAME
 	gtee - Duplicate standart input.
 
-[1mSYNOPSIS[0m
-	[1mgtee[0m [-a] [-i] [file ...]
+SYNOPSIS
+	gtee [-a] [-i] [file ...]
 
-[1mOPTIONS[0m
-	[1m-i, --i, -ignore, --ignore[0m	Ignore the SIGINT signal.
-	[1m-a, --a, -append, --append[0m	Append the output to the files rather than overwriting them.
+OPTIONS
+	-i, --i, -ignore, --ignore	Ignore the SIGINT signal.
+	-a, --a, -append, --append	Append the output to the files rather than overwriting them.
 
-[1mEXAMPLES[0m
+EXAMPLES
 Send the echoed message to both stdout and a file called greetings.txt:
 
 	$ echo "Hello" | gtee greetings.txt
