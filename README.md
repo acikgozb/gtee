@@ -50,7 +50,7 @@ $ echo "append me!" | gtee --a example.txt > /dev/null
 $ echo "append me!" | gtee -append example.txt > /dev/null
 $ echo "append me!" | gtee --append example.txt > /dev/null
 
-# Ignore SIGINT for a during a long execution.
+# Ignore SIGINT during a long execution.
 $ echo "write me, a super long input!" | gtee -i example.txt > /dev/null
 $ echo "write me, a super long input!" | gtee --i example.txt > /dev/null
 $ echo "write me, a super long input!" | gtee -ignore example.txt > /dev/null
