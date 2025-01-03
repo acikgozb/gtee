@@ -2,11 +2,30 @@
 
 A Go implementation of `tee`, a GNU Coreutils tool. The original implementation in C can be checked on [here](https://github.com/coreutils/coreutils/blob/master/src/tee.c).
 
-## Installation
+## Table of Contents
 
-The installation steps will be explained in detail once the initial version is ready to be distributed.
+<!--toc:start-->
 
-## Usage
+- [Installation](#installation)
+- [Usage](#usage)
+- [The Implementation](#the-implementation)
+- [Tests](#tests)
+- [Benchmarks](#benchmarks)
+- [TODO](#todo)
+
+<!--toc:end-->
+
+## <a id='installation' /> Installation
+
+Right now, the only way to install `gtee` is through `go install`, so you need to have Go runtime installed on your machine:
+
+```bash
+go install github.com/acikgozb/gtee
+```
+
+I am working on creating prebuilt binaries for Linux and Darwin, once that is done you will be able to install through release page.
+
+## <a id='usage' /> Usage
 
 `gtee` is designed to be used as a drop in replacement of `tee` with the exception of:
 
@@ -71,19 +90,19 @@ Send the echoed message to both stdout and a file called greetings.txt:
 	Hello
 ```
 
-## The Implementation
+## <a id='the-implementation' /> The Implementation
 
 The implemenation is done based on the POSIX specification of `tee`.
 
 You can see the specification on [here](https://pubs.opengroup.org/onlinepubs/9799919799/).
 Search for `tee` from index and you will see the document.
 
-## Tests
+## <a id='tests' /> Tests
 
 Each test is written to satisfy a different part of the specification.
 To see which requirement is tested in a given test, search the content of the `expected` variable on the specification.
 
-## Benchmarks
+## <a id='benchmarks' /> Benchmarks
 
 Currently, there is only one simple benchmark which compares both `tee` and `gtee` on a 100MB file created by `dd`.
 Check out `BenchmarkTee` and `BenchmarkGtee` for more information.
@@ -100,7 +119,7 @@ PASS
 ok  	github.com/acikgozb/gtee	12.470s
 ```
 
-## TODO
+## <a id='todo' /> TODO
 
 - Binary distribution & proper release tagging.
 - Updating this README with installation steps.
