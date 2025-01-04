@@ -207,6 +207,8 @@ func writeFile(ctx context.Context, f *os.File, bChan <-chan []byte, errChan cha
 		defer f.Close()
 		defer f.Sync()
 
+		skip := false
+
 		for {
 			select {
 			case <-ctx.Done():
@@ -216,9 +218,17 @@ func writeFile(ctx context.Context, f *os.File, bChan <-chan []byte, errChan cha
 					return
 				}
 
+				if skip {
+					continue
+				}
+
 				_, err := f.Write(b)
 				if err != nil {
 					errChan <- fmt.Errorf("%s: %s: %s", errCannotWrite, f.Name(), err)
+					f.Truncate(0)
+					f.Seek(0, 0)
+
+					skip = true
 				}
 			}
 		}
