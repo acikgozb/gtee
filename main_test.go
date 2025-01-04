@@ -446,7 +446,55 @@ func TestIgnore(t *testing.T) {
 	}
 }
 
-func prepareBenchCmdFiles(bin string) (string, string, error) {
+func TestWriteErr(t *testing.T) {
+	expected := []byte("If a write to any successful file operand fails, writes to other successfully opened file operands and standard output shall continue, but the exit status shall be non-zero.")
+
+	f, err := os.CreateTemp("", "tmpfile")
+	if err != nil {
+		t.Fatalf("Expected to create a temp file but got %q", err)
+	}
+	defer cleanup(f.Name())
+
+	// /dev/urandom is a special file that cannot be written.
+	// It is used to simulate a write error.
+	cmd := exec.Command(gtee, f.Name(), "/dev/urandom")
+
+	var outbuf bytes.Buffer
+	var errbuf bytes.Buffer
+
+	cmd.Stdin = bytes.NewReader(expected)
+	cmd.Stdout = &outbuf
+	cmd.Stderr = &errbuf
+
+	if err := cmd.Run(); err == nil {
+		t.Fatal("Expected to run the cmd and get an error, but got nil")
+	}
+
+	outb := outbuf.Bytes()
+	if len(outb) == 0 {
+		t.Fatalf("Expected to write to stdout successfully when a write to another file fails.")
+	}
+
+	rb := make([]byte, len(expected))
+	if _, err := f.Read(rb); err != nil {
+		t.Fatalf("Expected to read the temp file after writing, but got %q", err)
+	}
+
+	if len(rb) != len(expected) {
+		t.Fatalf("Expected to write to the temp file successfully, but got %q", rb)
+	}
+
+	errb := errbuf.Bytes()
+	if len(errb) == 0 {
+		t.Fatalf("Expected to see a diagnostic message about write error, but got nothing.")
+	}
+
+	if code := cmd.ProcessState.ExitCode(); code <= 0 {
+		t.Fatalf("Expected to exit with code >0, but got %d", code)
+	}
+}
+
+func prepareBenchCmdFiles() (string, string, error) {
 	fStdin, err := os.CreateTemp("", "bin-stdin")
 	if err != nil {
 		return "", "", err
@@ -488,7 +536,7 @@ func getBenchCmd(bin, fnStdin, fnOut string) (*exec.Cmd, error) {
 func BenchmarkTee(b *testing.B) {
 	bin := "tee"
 
-	fnStdin, fnOut, err := prepareBenchCmdFiles(bin)
+	fnStdin, fnOut, err := prepareBenchCmdFiles()
 	if err != nil {
 		b.Fatalf("Expected to prepare the benchmark file but got %q", err)
 	}
@@ -511,7 +559,7 @@ func BenchmarkTee(b *testing.B) {
 }
 
 func BenchmarkGtee(b *testing.B) {
-	fnStdin, fnOut, err := prepareBenchCmdFiles(gtee)
+	fnStdin, fnOut, err := prepareBenchCmdFiles()
 	if err != nil {
 		b.Fatalf("Expected to prepare the benchmark file but got %q", err)
 	}
