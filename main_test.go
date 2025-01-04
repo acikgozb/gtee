@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"runtime"
 	"slices"
 	"syscall"
 	"testing"
@@ -455,9 +456,15 @@ func TestWriteErr(t *testing.T) {
 	}
 	defer cleanup(f.Name())
 
-	// /dev/urandom is a special file that cannot be written.
-	// It is used to simulate a write error.
-	cmd := exec.Command(gtee, f.Name(), "/dev/urandom")
+	// /dev/full is a special file on Linux that simulates the write error "No space left on device".
+	incorrectFname := "/dev/full"
+	if runtime.GOOS == "darwin" {
+		// On Darwin, /dev/full does not exist, so another unwritable file is used.
+		// /dev/urandom can be written on Linux, so another file must be used.
+		incorrectFname = "/dev/urandom"
+	}
+
+	cmd := exec.Command(gtee, f.Name(), incorrectFname)
 
 	var outbuf bytes.Buffer
 	var errbuf bytes.Buffer
